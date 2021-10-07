@@ -58,7 +58,7 @@ export default function HomeScreen(props) {
           .isMatch("eq", true)
           .or((m) => m.User1ID("eq", me.id).User2ID("eq", me.id))
       );
-      console.log(result);
+      
       // jedoch nur die matches, in denen der aktuelle User beteiligt ist
       setMatchesIds(result.map(match => 
         match.User1ID === me.id ? match.User2ID : match.User1ID,

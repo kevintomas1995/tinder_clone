@@ -1,6 +1,6 @@
 {
     "identityPoolName": "testAuthIdentityPool",
-    "allowUnauthenticatedIdentities": false,
+    "allowUnauthenticatedIdentities": true,
     "resourceNameTruncated": "tinder0bf81b6d",
     "userPoolName": "TinderClone",
     "autoVerifiedAttributes": [

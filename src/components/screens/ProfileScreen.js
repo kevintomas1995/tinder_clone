@@ -10,10 +10,10 @@ import {
   ActivityIndicator,
   Image,
 } from "react-native";
-import { Auth, DataStore } from "aws-amplify";
+import { Auth, DataStore, Storage } from "aws-amplify";
+import { S3Image } from "aws-amplify-react-native";
 import { User } from "../../models/";
-import * as ImagePicker from 'expo-image-picker';
-
+import * as ImagePicker from "expo-image-picker";
 
 const ProfileScreen = (props) => {
   const [user, setUser] = useState(null);
@@ -21,8 +21,7 @@ const ProfileScreen = (props) => {
   const [bio, setBio] = useState("");
   const [gender, setGender] = useState();
   const [lookingFor, setLookingFor] = useState();
-
-  const [image, setImage] = useState(null);
+  const [newImageLocalUri, setNewImageLocalUri] = useState(null);
 
   // hiermit checken wir, ob der aktuelle User schon in der DB abgespeichert wurde
   // wird nur einmal initial ausgeführt
@@ -67,6 +66,11 @@ const ProfileScreen = (props) => {
       return;
     }
 
+    let newImage;
+    if (newImageLocalUri) {
+      newImage = await uploadImage();
+    }
+
     // hier checkt man dann, ob der aktuelle User im unserem State "user" existiert bzw. ob er in der db ist
     // wenn ja, dann werden die Daten aus der DB dem aktuellen User zugeschrieben
     if (user) {
@@ -75,11 +79,14 @@ const ProfileScreen = (props) => {
         updated.bio = bio;
         updated.gender = gender;
         updated.lookingFor = lookingFor;
-        // updated.image raus, wenn man den image oicker nicht hat
-        updated.image = image;
+        // updated.image raus, wenn man den image picker nicht hat
+        if (newImage) {
+          updated.image = newImage;
+        }
       });
 
       await DataStore.save(updatedUser);
+      setNewImageLocalUri(null);
 
       // ansonsten wird ein neuer erstellt
     } else {
@@ -103,7 +110,6 @@ const ProfileScreen = (props) => {
     Alert.alert("User saved successfully!");
   };
 
-
   const signOut = async () => {
     // clear cache
     await DataStore.clear();
@@ -113,10 +119,11 @@ const ProfileScreen = (props) => {
   // das ist alles für den Image picker
   useEffect(() => {
     (async () => {
-      if (Platform.OS !== 'web') {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-          alert('Sorry, we need camera roll permissions to make this work!');
+      if (Platform.OS !== "web") {
+        const { status } =
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== "granted") {
+          alert("Sorry, we need camera roll permissions to make this work!");
         }
       }
     })();
@@ -133,10 +140,65 @@ const ProfileScreen = (props) => {
     console.log(result);
 
     if (!result.cancelled) {
-      setImage(result.uri);
+      setNewImageLocalUri(result.uri);
     }
   };
 
+  // alles für den Image upload nach S3
+  const uploadImage = async () => {
+    try {
+      const response = await fetch(newImageLocalUri);
+
+      // man muss in ein blob transformieren, um es im Storage abspeichern zu können
+      const blob = await response.blob();
+
+      const urlParts = newImageLocalUri.split(".");
+      const extension = urlParts[urlParts.length - 1];
+
+      // so nur ein Foto upload pro user möglich
+      // wenn mehrere möglich sein sollen --> const key = `${uuidv4()}.${extension}`; (diese Library muss dan noch installiert werden)
+      const key = `${user.id}.${extension}`;
+
+      await Storage.put(key, blob);
+
+      return key;
+    } catch (e) {
+      console.log(e);
+    }
+    return "";
+  };
+
+  // die gleiche Logik müsste man auch bei den Swipekarten machen
+  // da werden die bilder ja auch abgebildet
+  // in index.js ist der entsprechende code ausgeklammert
+  const renderImage = () => {
+    // hier gehen wir jedes Format der Bilder durch
+    // entweder Link, lokal oder S3
+
+
+    if (newImageLocalUri) {
+      return (
+        <Image
+          source={{ uri: newImageLocalUri }}
+          style={{ width: 100, height: 100, borderRadius: 50 }}
+        />
+      );
+    }
+    if (user?.image?.startsWith("http")) {
+      return (
+        <Image
+          source={{ uri: user?.image }}
+          style={{ width: 100, height: 100, borderRadius: 50 }}
+        />
+      );
+    }
+    return (
+      <S3Image
+        imgKey={user?.image}
+        style={{ width: 100, height: 100, borderRadius: 50 }}
+      />
+    );
+  };
 
   return (
     <SafeAreaView style={styles.root}>
@@ -144,11 +206,7 @@ const ProfileScreen = (props) => {
         <ActivityIndicator style={{ flex: 1 }} />
       ) : (
         <View style={styles.container}>
-          <Image
-            source={{ uri: user?.image }}
-            style={{ width: 100, height: 100, borderRadius: 50 }}
-          />
-
+          {renderImage()}
           <Pressable onPress={pickImage}>
             <Text>Pick an image</Text>
           </Pressable>
